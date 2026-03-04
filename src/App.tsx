@@ -1565,25 +1565,48 @@ function Onboarding({ userUid, onComplete, initialProfile }: { userUid: string, 
                 <p className="text-slate-500">Based on your input, here are your calculated targets.</p>
 
                 <div className="space-y-4">
-                  <div className="p-4 bg-slate-50 rounded-xl flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase">Daily Calories</p>
-                      <p className="text-2xl font-extrabold">{formData.daily_calories} kcal</p>
+                  <div className="p-4 bg-slate-50 rounded-xl flex items-center justify-between focus-within:ring-2 focus-within:ring-primary transition-all">
+                    <div className="flex-1">
+                      <label className="text-xs font-bold text-slate-400 uppercase block cursor-text mb-1 flex items-center gap-1">
+                        Daily Calories
+                        <span className="text-slate-300 lowercase text-[10px]">(kcal)</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.daily_calories || ''}
+                        onChange={e => setFormData({ ...formData, daily_calories: parseInt(e.target.value) || 0 })}
+                        className="text-2xl font-extrabold bg-transparent border-none p-0 w-full focus:ring-0 text-slate-900"
+                      />
                     </div>
                     <Settings className="text-slate-300" />
                   </div>
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="p-3 bg-slate-50 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Protein</p>
-                      <p className="text-lg font-bold">{formData.daily_protein}g</p>
+                    <div className="p-3 bg-slate-50 rounded-xl text-center focus-within:ring-2 focus-within:ring-primary transition-all">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Protein</label>
+                      <input
+                        type="number"
+                        value={formData.daily_protein || ''}
+                        onChange={e => setFormData({ ...formData, daily_protein: parseInt(e.target.value) || 0 })}
+                        className="text-lg font-bold bg-transparent border-none p-0 w-full text-center focus:ring-0"
+                      />
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Carbs</p>
-                      <p className="text-lg font-bold">{formData.daily_carbs}g</p>
+                    <div className="p-3 bg-slate-50 rounded-xl text-center focus-within:ring-2 focus-within:ring-primary transition-all">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Carbs</label>
+                      <input
+                        type="number"
+                        value={formData.daily_carbs || ''}
+                        onChange={e => setFormData({ ...formData, daily_carbs: parseInt(e.target.value) || 0 })}
+                        className="text-lg font-bold bg-transparent border-none p-0 w-full text-center focus:ring-0"
+                      />
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl text-center">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Fats</p>
-                      <p className="text-lg font-bold">{formData.daily_fats}g</p>
+                    <div className="p-3 bg-slate-50 rounded-xl text-center focus-within:ring-2 focus-within:ring-primary transition-all">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Fats</label>
+                      <input
+                        type="number"
+                        value={formData.daily_fats || ''}
+                        onChange={e => setFormData({ ...formData, daily_fats: parseInt(e.target.value) || 0 })}
+                        className="text-lg font-bold bg-transparent border-none p-0 w-full text-center focus:ring-0"
+                      />
                     </div>
                   </div>
                 </div>
