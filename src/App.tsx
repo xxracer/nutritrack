@@ -160,20 +160,10 @@ const MacroRing = ({ value, max, label, color }: { value: number, max: number, l
 };
 
 // --- API Helpers ---
-const getDeviceId = () => {
-  if (auth.currentUser) return auth.currentUser.uid;
-  let id = localStorage.getItem('nutritrack_device_id');
-  if (!id) {
-    id = 'device_' + Math.random().toString(36).substring(2, 15);
-    localStorage.setItem('nutritrack_device_id', id);
-  }
-  return id;
-};
-
-const apiFetch = async (url: string, options: any = {}) => {
+const apiFetch = async (deviceId: string, url: string, options: any = {}) => {
   const headers = {
     ...options.headers,
-    'x-device-id': getDeviceId(),
+    'x-device-id': deviceId,
   };
   return fetch(url, { ...options, headers });
 };
@@ -255,8 +245,8 @@ export default function App() {
   });
 
   const handleLogWeight = async () => {
-    if (!newWeight) return;
-    await apiFetch('/api/weight', {
+    if (!newWeight || !user) return;
+    await apiFetch(user.uid, '/api/weight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ weight: parseFloat(newWeight), photo_url: '' })
@@ -266,11 +256,11 @@ export default function App() {
   };
 
   const handleSuggestFood = async () => {
-    if (!newMeal.name) return;
+    if (!newMeal.name || !user) return;
     setIsLoggingMeal(true);
     setFoodSuggestions([]);
     try {
-      const res = await apiFetch('/api/food/suggest', {
+      const res = await apiFetch(user.uid, '/api/food/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newMeal.name })
@@ -310,7 +300,7 @@ export default function App() {
   };
 
   const handleLogSelectedMeals = async () => {
-    if (selectedFoodIndexes.length === 0) return;
+    if (selectedFoodIndexes.length === 0 || !user) return;
     try {
       const selectedOpts = foodSuggestions.filter((_, i) => selectedFoodIndexes.includes(i));
 
@@ -320,7 +310,7 @@ export default function App() {
       const totalCarbs = selectedOpts.reduce((sum, opt) => sum + (Number(opt.carbs) || 0), 0);
       const totalFats = selectedOpts.reduce((sum, opt) => sum + (Number(opt.fats) || 0), 0);
 
-      await apiFetch('/api/food', {
+      await apiFetch(user.uid, '/api/food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -345,7 +335,7 @@ export default function App() {
 
   const handleManualLog = async () => {
     const validItems = manualItems.filter(item => item.name.trim() !== '');
-    if (validItems.length === 0) return;
+    if (validItems.length === 0 || !user) return;
     try {
       const combinedName = validItems.map(item => item.name.trim()).join(' and ');
       const totalCalories = validItems.reduce((sum, item) => sum + (Number(item.calories) || 0), 0);
@@ -353,7 +343,7 @@ export default function App() {
       const totalCarbs = validItems.reduce((sum, item) => sum + (Number(item.carbs) || 0), 0);
       const totalFats = validItems.reduce((sum, item) => sum + (Number(item.fats) || 0), 0);
 
-      await apiFetch('/api/food', {
+      await apiFetch(user.uid, '/api/food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -390,8 +380,8 @@ export default function App() {
   };
 
   const handleLogWorkout = async () => {
-    if (currentWorkout.length === 0) return;
-    await apiFetch('/api/workouts', {
+    if (currentWorkout.length === 0 || !user) return;
+    await apiFetch(user.uid, '/api/workouts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ exercises: currentWorkout })
@@ -402,11 +392,14 @@ export default function App() {
   };
 
   const fetchData = async () => {
+    if (!user) return;
     try {
-      const profileRes = await apiFetch('/api/profile');
-      const foodRes = await apiFetch('/api/food');
-      const weightRes = await apiFetch('/api/weight');
-      const workoutRes = await apiFetch('/api/workouts');
+      const [profileRes, foodRes, workoutRes, weightRes] = await Promise.all([
+        apiFetch(user.uid, '/api/profile'),
+        apiFetch(user.uid, '/api/food'),
+        apiFetch(user.uid, '/api/workouts'),
+        apiFetch(user.uid, '/api/weight')
+      ]);
 
       if (profileRes.ok && foodRes.ok && weightRes.ok && workoutRes.ok) {
         const profileData = await profileRes.json();
@@ -426,7 +419,7 @@ export default function App() {
         } else {
           setShowSplash(false);
           // Fetch AI recommendation in the background only if user has a profile
-          apiFetch('/api/food/recommendations')
+          apiFetch(user.uid, '/api/food/recommendations')
             .then(async res => {
               const data = await res.json();
               if (!res.ok) {
@@ -561,7 +554,7 @@ export default function App() {
   }
 
   if (showOnboarding) {
-    return <Onboarding onComplete={() => { setShowOnboarding(false); fetchData(); }} initialProfile={profile} />;
+    return <Onboarding userUid={user.uid} onComplete={() => { setShowOnboarding(false); fetchData(); }} initialProfile={profile} />;
   }
 
   return (
@@ -688,8 +681,16 @@ export default function App() {
                       </div>
                       <button
                         onClick={async () => {
-                          await apiFetch(`/api/food/${log.id}`, { method: 'DELETE' });
-                          fetchData();
+                          if (!user) return;
+                          try {
+                            const res = await apiFetch(user.uid, `/api/food/${log.id}`, { method: 'DELETE' });
+                            if (res.ok) {
+                              setFoodLogs(foodLogs.filter(item => item.id !== log.id));
+                              await fetchData();
+                            }
+                          } catch (err) {
+                            console.error("Failed to delete log", err);
+                          }
                         }}
                         className="w-10 h-10 flex items-center justify-center rounded-full text-red-500 hover:bg-red-50 transition-colors"
                       >
@@ -1338,7 +1339,7 @@ export default function App() {
 
 // --- Onboarding Flow ---
 
-function Onboarding({ onComplete, initialProfile }: { onComplete: () => void, initialProfile?: Profile | null }) {
+function Onboarding({ userUid, onComplete, initialProfile }: { userUid: string, onComplete: () => void, initialProfile?: Profile | null }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<Partial<Profile>>(initialProfile || {
     name: '',
@@ -1390,9 +1391,12 @@ function Onboarding({ onComplete, initialProfile }: { onComplete: () => void, in
 
   const handleSave = async () => {
     try {
-      await apiFetch('/api/profile', {
+      await fetch('/api/profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': userUid
+        },
         body: JSON.stringify(formData)
       });
       onComplete();
