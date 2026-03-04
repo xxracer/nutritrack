@@ -393,23 +393,32 @@ export default function App() {
   };
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log("DEBUG: fetchData called but no user exists");
+      return;
+    }
     try {
-      // 1. Fetch Profile First
+      console.log("DEBUG: Fetching Profile for UID:", user.uid);
       const profileRes = await apiFetch('/api/profile');
-      if (!profileRes.ok) throw new Error("Failed to fetch profile");
+      console.log("DEBUG: Profile HTTP Status:", profileRes.status);
 
-      const profileData = await profileRes.json();
+      let profileData = null;
+      if (profileRes.ok) {
+        profileData = await profileRes.json();
+        console.log("DEBUG: Profile Data body:", profileData);
+      } else {
+        console.warn("DEBUG: Profile fetch failed with", profileRes.status);
+      }
 
       if (!profileData || !profileData.name) {
-        // User is brand new (no profile saved)
+        console.log("DEBUG: Profile is empty or missing name. SHOWING ONBOARDING.");
         setShowOnboarding(true);
         setLoading(false);
         setShowSplash(false);
-        return; // Stop right here!
+        return;
       }
 
-      // 2. User exists. Save profile and clear splash.
+      console.log("DEBUG: Profile found. Saving to State and clearing Splash.");
       setProfile(profileData);
       setShowSplash(false);
 
