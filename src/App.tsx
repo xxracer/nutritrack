@@ -172,6 +172,7 @@ export default function App() {
   const [showLogMeal, setShowLogMeal] = useState(false);
   const [foodSuggestions, setFoodSuggestions] = useState<any[]>([]);
   const [selectedFoodIndexes, setSelectedFoodIndexes] = useState<number[]>([]);
+  const [manualItems, setManualItems] = useState<any[]>([]);
   const [showLogWorkout, setShowLogWorkout] = useState(false);
   const [newMeal, setNewMeal] = useState({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
   const [currentWorkout, setCurrentWorkout] = useState<any[]>([]);
@@ -258,10 +259,12 @@ export default function App() {
         setSelectedFoodIndexes(data.options.map((_: any, i: number) => i));
       } else {
         setSearchError(data.error || 'Failed to parse AI data');
+        setManualItems([{ id: Math.random().toString(), name: newMeal.name, calories: '', protein: '', carbs: '', fats: '' }]);
       }
     } catch (e: any) {
       console.error(e);
       setSearchError(e.message || 'Network error');
+      setManualItems([{ id: Math.random().toString(), name: newMeal.name, calories: '', protein: '', carbs: '', fats: '' }]);
     } finally {
       setIsLoggingMeal(false);
     }
@@ -287,11 +290,26 @@ export default function App() {
     if (selectedFoodIndexes.length === 0) return;
     try {
       const selectedOpts = foodSuggestions.filter((_, i) => selectedFoodIndexes.includes(i));
-      await Promise.all(selectedOpts.map(opt => fetch('/api/food', {
+
+      const combinedName = selectedOpts.map(opt => opt.name).join(' and ');
+      const totalCalories = selectedOpts.reduce((sum, opt) => sum + (Number(opt.calories) || 0), 0);
+      const totalProtein = selectedOpts.reduce((sum, opt) => sum + (Number(opt.protein) || 0), 0);
+      const totalCarbs = selectedOpts.reduce((sum, opt) => sum + (Number(opt.carbs) || 0), 0);
+      const totalFats = selectedOpts.reduce((sum, opt) => sum + (Number(opt.fats) || 0), 0);
+
+      await fetch('/api/food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...opt, mealType: newMeal.mealType })
-      })));
+        body: JSON.stringify({
+          name: combinedName,
+          calories: totalCalories,
+          protein: totalProtein,
+          carbs: totalCarbs,
+          fats: totalFats,
+          mealType: newMeal.mealType
+        })
+      });
+
       setNewMeal({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
       setFoodSuggestions([]);
       setSelectedFoodIndexes([]);
@@ -303,23 +321,32 @@ export default function App() {
   };
 
   const handleManualLog = async () => {
-    if (!newMeal.name) return;
+    const validItems = manualItems.filter(item => item.name.trim() !== '');
+    if (validItems.length === 0) return;
     try {
+      const combinedName = validItems.map(item => item.name.trim()).join(' and ');
+      const totalCalories = validItems.reduce((sum, item) => sum + (Number(item.calories) || 0), 0);
+      const totalProtein = validItems.reduce((sum, item) => sum + (Number(item.protein) || 0), 0);
+      const totalCarbs = validItems.reduce((sum, item) => sum + (Number(item.carbs) || 0), 0);
+      const totalFats = validItems.reduce((sum, item) => sum + (Number(item.fats) || 0), 0);
+
       await fetch('/api/food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newMeal.name,
-          calories: Number(newMeal.calories) || 0,
-          protein: Number(newMeal.protein) || 0,
-          carbs: Number(newMeal.carbs) || 0,
-          fats: Number(newMeal.fats) || 0,
+          name: combinedName,
+          calories: totalCalories,
+          protein: totalProtein,
+          carbs: totalCarbs,
+          fats: totalFats,
           mealType: newMeal.mealType
         })
       });
+
       setNewMeal({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
       setFoodSuggestions([]);
       setSelectedFoodIndexes([]);
+      setManualItems([]);
       setSearchError('');
       setShowLogMeal(false);
       fetchData();
@@ -369,22 +396,23 @@ export default function App() {
         setWeightHistory(weightData);
         setWorkoutLogs(workoutData);
 
-        // Fetch AI recommendation in the background to not block initial render as much
-        fetch('/api/food/recommendations')
-          .then(async res => {
-            const data = await res.json();
-            if (!res.ok) {
-              throw new Error(data.error);
-            }
-            return data;
-          })
-          .then(data => setRecommendation(data.recommendation))
-          .catch(err => console.error("Rec Error:", err));
-
         if (!profileData.name) {
           setShowOnboarding(true);
+          setLoading(false);
+          setShowSplash(false);
         } else {
           setShowSplash(false);
+          // Fetch AI recommendation in the background only if user has a profile
+          fetch('/api/food/recommendations')
+            .then(async res => {
+              const data = await res.json();
+              if (!res.ok) {
+                throw new Error(data.error);
+              }
+              return data;
+            })
+            .then(data => setRecommendation(data.recommendation))
+            .catch(err => console.error("Rec Error:", err));
         }
       }
     } catch (error) {
@@ -936,44 +964,101 @@ export default function App() {
                         </div>
                       )}
                       {searchError && (
-                        <div className="bg-orange-50 rounded-xl p-4 mt-4 border border-orange-100">
-                          <p className="font-bold text-orange-600 text-sm mb-3">Oops, the AI couldn't find it. You can enter it manually:</p>
-                          <div className="space-y-3">
-                            <input
-                              type="number"
-                              placeholder="Calories (kcal)"
-                              value={newMeal.calories || ''}
-                              onChange={e => setNewMeal({ ...newMeal, calories: Number(e.target.value) })}
-                              className="w-full p-3 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary"
-                            />
-                            <div className="grid grid-cols-3 gap-2">
-                              <input
-                                type="number"
-                                placeholder="Protein (g)"
-                                value={newMeal.protein || ''}
-                                onChange={e => setNewMeal({ ...newMeal, protein: Number(e.target.value) })}
-                                className="w-full p-2 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary text-sm"
-                              />
-                              <input
-                                type="number"
-                                placeholder="Carbs (g)"
-                                value={newMeal.carbs || ''}
-                                onChange={e => setNewMeal({ ...newMeal, carbs: Number(e.target.value) })}
-                                className="w-full p-2 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary text-sm"
-                              />
-                              <input
-                                type="number"
-                                placeholder="Fats (g)"
-                                value={newMeal.fats || ''}
-                                onChange={e => setNewMeal({ ...newMeal, fats: Number(e.target.value) })}
-                                className="w-full p-2 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary text-sm"
-                              />
-                            </div>
+                        <div className="bg-orange-50 rounded-xl p-4 mt-4 border border-orange-100 max-h-96 overflow-y-auto custom-scrollbar">
+                          <p className="font-bold text-orange-600 text-sm mb-4">Oops, the AI couldn't find it. You can enter items manually:</p>
+                          <div className="space-y-4">
+                            {manualItems.map((item, index) => (
+                              <div key={item.id} className="p-3 bg-white rounded-xl shadow-sm border border-orange-100 space-y-3 relative">
+                                {manualItems.length > 1 && (
+                                  <button onClick={() => setManualItems(manualItems.filter((_, i) => i !== index))} className="absolute top-2 right-2 text-slate-400 hover:text-red-500 bg-white rounded-full p-1 z-10 transition-colors">
+                                    <X size={16} strokeWidth={3} />
+                                  </button>
+                                )}
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Food Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. Yuca Frita"
+                                    value={item.name}
+                                    onChange={e => {
+                                      const newItems = [...manualItems];
+                                      newItems[index].name = e.target.value;
+                                      setManualItems(newItems);
+                                    }}
+                                    className="w-full p-2.5 rounded-lg bg-slate-50 border-none focus:ring-2 focus:ring-primary font-bold text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Calories (kcal)</label>
+                                  <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={item.calories}
+                                    onChange={e => {
+                                      const newItems = [...manualItems];
+                                      newItems[index].calories = e.target.value;
+                                      setManualItems(newItems);
+                                    }}
+                                    className="w-full p-2.5 rounded-lg bg-slate-50 border-none focus:ring-2 focus:ring-primary text-sm font-bold"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">P (g)</label>
+                                    <input
+                                      type="number"
+                                      placeholder="0"
+                                      value={item.protein}
+                                      onChange={e => {
+                                        const newItems = [...manualItems];
+                                        newItems[index].protein = e.target.value;
+                                        setManualItems(newItems);
+                                      }}
+                                      className="w-full p-2 rounded-lg bg-slate-50 border-none focus:ring-2 focus:ring-primary text-sm font-bold"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">C (g)</label>
+                                    <input
+                                      type="number"
+                                      placeholder="0"
+                                      value={item.carbs}
+                                      onChange={e => {
+                                        const newItems = [...manualItems];
+                                        newItems[index].carbs = e.target.value;
+                                        setManualItems(newItems);
+                                      }}
+                                      className="w-full p-2 rounded-lg bg-slate-50 border-none focus:ring-2 focus:ring-primary text-sm font-bold"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">F (g)</label>
+                                    <input
+                                      type="number"
+                                      placeholder="0"
+                                      value={item.fats}
+                                      onChange={e => {
+                                        const newItems = [...manualItems];
+                                        newItems[index].fats = e.target.value;
+                                        setManualItems(newItems);
+                                      }}
+                                      className="w-full p-2 rounded-lg bg-slate-50 border-none focus:ring-2 focus:ring-primary text-sm font-bold"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => setManualItems([...manualItems, { id: Math.random().toString(), name: '', calories: '', protein: '', carbs: '', fats: '' }])}
+                              className="w-full py-3 border-2 border-dashed border-orange-300 text-orange-600 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-orange-100/50 transition-colors"
+                            >
+                              <Plus size={18} /> Add Another Item
+                            </button>
                             <button
                               onClick={handleManualLog}
-                              className="w-full bg-primary hover:bg-primary/90 text-slate-900 font-bold py-3 rounded-lg shadow-sm mt-2 transition-colors"
+                              className="w-full bg-primary hover:bg-primary/90 text-slate-900 font-bold py-4 rounded-xl shadow-lg shadow-primary/20 mt-4 transition-colors"
                             >
-                              Save {newMeal.name} Manually
+                              Save {manualItems.length} {manualItems.length === 1 ? 'Item' : 'Items'} Manually
                             </button>
                           </div>
                         </div>
