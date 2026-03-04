@@ -89,14 +89,13 @@ app.get("/api/food", requireDb, async (req, res) => {
       .where('userId', '==', deviceId)
       .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(today))
       .where('timestamp', '<', admin.firestore.Timestamp.fromDate(tomorrow))
-      .orderBy('timestamp', 'desc')
       .get();
 
     const logs = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate()
-    }));
+      timestamp: doc.data().timestamp?.toDate() || new Date(0)
+    })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     res.json(logs);
   } catch (err: any) {
@@ -228,14 +227,13 @@ app.get("/api/workouts", requireDb, async (req, res) => {
 
     const snapshot = await db!.collection('workout_logs')
       .where('userId', '==', deviceId)
-      .orderBy('timestamp', 'desc')
       .get();
 
     const logs = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate()
-    }));
+      timestamp: doc.data().timestamp?.toDate() || new Date(0)
+    })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 20);
     res.json(logs);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -263,14 +261,13 @@ app.get("/api/weight", requireDb, async (req, res) => {
 
     const snapshot = await db!.collection('weight_history')
       .where('userId', '==', deviceId)
-      .orderBy('timestamp', 'desc')
       .get();
 
     const history = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate()
-    }));
+      timestamp: doc.data().timestamp?.toDate() || new Date(0)
+    })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     res.json(history);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

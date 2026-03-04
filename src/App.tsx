@@ -394,43 +394,45 @@ export default function App() {
   const fetchData = async () => {
     if (!user) return;
     try {
-      const [profileRes, foodRes, workoutRes, weightRes] = await Promise.all([
-        apiFetch(user.uid, '/api/profile'),
+      // 1. Fetch Profile First
+      const profileRes = await apiFetch(user.uid, '/api/profile');
+      if (!profileRes.ok) throw new Error("Failed to fetch profile");
+
+      const profileData = await profileRes.json();
+
+      if (!profileData || !profileData.name) {
+        // User is brand new (no profile saved)
+        setShowOnboarding(true);
+        setLoading(false);
+        setShowSplash(false);
+        return; // Stop right here!
+      }
+
+      // 2. User exists. Save profile and clear splash.
+      setProfile(profileData);
+      setShowSplash(false);
+
+      // 3. Fetch all other historical data safely
+      const [foodRes, workoutRes, weightRes] = await Promise.all([
         apiFetch(user.uid, '/api/food'),
         apiFetch(user.uid, '/api/workouts'),
         apiFetch(user.uid, '/api/weight')
       ]);
 
-      if (profileRes.ok && foodRes.ok && weightRes.ok && workoutRes.ok) {
-        const profileData = await profileRes.json();
-        const foodData = await foodRes.json();
-        const weightData = await weightRes.json();
-        const workoutData = await workoutRes.json();
+      if (foodRes.ok) setFoodLogs(await foodRes.json());
+      if (weightRes.ok) setWeightHistory(await weightRes.json());
+      if (workoutRes.ok) setWorkoutLogs(await workoutRes.json());
 
-        setProfile(profileData.name ? profileData : null);
-        setFoodLogs(foodData);
-        setWeightHistory(weightData);
-        setWorkoutLogs(workoutData);
+      // 4. Fetch AI Recommendation asynchronously (don't await it blocking the UI)
+      apiFetch(user.uid, '/api/food/recommendations')
+        .then(async res => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          return data;
+        })
+        .then(data => setRecommendation(data.recommendation))
+        .catch(err => console.error("Rec Error:", err));
 
-        if (!profileData.name) {
-          setShowOnboarding(true);
-          setLoading(false);
-          setShowSplash(false);
-        } else {
-          setShowSplash(false);
-          // Fetch AI recommendation in the background only if user has a profile
-          apiFetch(user.uid, '/api/food/recommendations')
-            .then(async res => {
-              const data = await res.json();
-              if (!res.ok) {
-                throw new Error(data.error);
-              }
-              return data;
-            })
-            .then(data => setRecommendation(data.recommendation))
-            .catch(err => console.error("Rec Error:", err));
-        }
-      }
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
