@@ -45,12 +45,19 @@ const requireDb = (req: express.Request, res: express.Response, next: express.Ne
   if (!db) {
     return res.status(500).json({ error: "Firebase env variabes are missing. Please configure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY." });
   }
+  const deviceId = req.headers['x-device-id'] as string;
+  if (!deviceId) {
+    return res.status(401).json({ error: "Unauthorized: Missing x-device-id header" });
+  }
+  // Attach deviceId to the request for easy access in handlers
+  (req as any).deviceId = deviceId;
   next();
 };
 
 app.get("/api/profile", requireDb, async (req, res) => {
   try {
-    const doc = await db!.collection('profiles').doc('default_user').get();
+    const deviceId = (req as any).deviceId;
+    const doc = await db!.collection('profiles').doc(deviceId).get();
     res.json(doc.exists ? doc.data() : {});
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -59,8 +66,9 @@ app.get("/api/profile", requireDb, async (req, res) => {
 
 app.post("/api/profile", requireDb, async (req, res) => {
   try {
+    const deviceId = (req as any).deviceId;
     const data = req.body;
-    await db!.collection('profiles').doc('default_user').set(data, { merge: true });
+    await db!.collection('profiles').doc(deviceId).set(data, { merge: true });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -75,7 +83,10 @@ app.get("/api/food", requireDb, async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    const deviceId = (req as any).deviceId;
+
     const snapshot = await db!.collection('food_logs')
+      .where('userId', '==', deviceId)
       .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(today))
       .where('timestamp', '<', admin.firestore.Timestamp.fromDate(tomorrow))
       .orderBy('timestamp', 'desc')
@@ -139,11 +150,14 @@ app.get("/api/food/recommendations", requireDb, async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    const deviceId = (req as any).deviceId;
+
     // Fetch profile and today's logs
-    const profileDoc = await db!.collection('profiles').doc('default_user').get();
+    const profileDoc = await db!.collection('profiles').doc(deviceId).get();
     const profile = profileDoc.data();
 
     const logsSnapshot = await db!.collection('food_logs')
+      .where('userId', '==', deviceId)
       .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(today))
       .where('timestamp', '<', admin.firestore.Timestamp.fromDate(tomorrow))
       .get();
@@ -180,9 +194,11 @@ app.get("/api/food/recommendations", requireDb, async (req, res) => {
 app.post("/api/food", requireDb, async (req, res) => {
   try {
     const { name, calories, protein, carbs, fats, mealType } = req.body;
+    const deviceId = (req as any).deviceId;
 
     // The user has selected a specific option from the suggestions, so just save it.
     const result = await db!.collection('food_logs').add({
+      userId: deviceId,
       name,
       calories: calories || 0,
       protein: protein || 0,
@@ -208,7 +224,10 @@ app.delete("/api/food/:id", requireDb, async (req, res) => {
 
 app.get("/api/workouts", requireDb, async (req, res) => {
   try {
+    const deviceId = (req as any).deviceId;
+
     const snapshot = await db!.collection('workout_logs')
+      .where('userId', '==', deviceId)
       .orderBy('timestamp', 'desc')
       .get();
 
@@ -225,8 +244,10 @@ app.get("/api/workouts", requireDb, async (req, res) => {
 
 app.post("/api/workouts", requireDb, async (req, res) => {
   try {
+    const deviceId = (req as any).deviceId;
     const { exercises } = req.body;
     const result = await db!.collection('workout_logs').add({
+      userId: deviceId,
       exercises: exercises || [],
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -238,7 +259,10 @@ app.post("/api/workouts", requireDb, async (req, res) => {
 
 app.get("/api/weight", requireDb, async (req, res) => {
   try {
+    const deviceId = (req as any).deviceId;
+
     const snapshot = await db!.collection('weight_history')
+      .where('userId', '==', deviceId)
       .orderBy('timestamp', 'desc')
       .get();
 
@@ -255,8 +279,10 @@ app.get("/api/weight", requireDb, async (req, res) => {
 
 app.post("/api/weight", requireDb, async (req, res) => {
   try {
+    const deviceId = (req as any).deviceId;
     const { weight, photo_url } = req.body;
     const result = await db!.collection('weight_history').add({
+      userId: deviceId,
       weight, photo_url,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
