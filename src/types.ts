@@ -19,6 +19,7 @@ export interface FoodLog {
   protein: number;
   carbs: number;
   fats: number;
+  mealType?: string;
   timestamp: string;
 }
 

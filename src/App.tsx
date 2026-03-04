@@ -171,8 +171,9 @@ export default function App() {
   const [searchError, setSearchError] = useState<string>('');
   const [showLogMeal, setShowLogMeal] = useState(false);
   const [foodSuggestions, setFoodSuggestions] = useState<any[]>([]);
+  const [selectedFoodIndexes, setSelectedFoodIndexes] = useState<number[]>([]);
   const [showLogWorkout, setShowLogWorkout] = useState(false);
-  const [newMeal, setNewMeal] = useState({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0 });
+  const [newMeal, setNewMeal] = useState({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
   const [currentWorkout, setCurrentWorkout] = useState<any[]>([]);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [newWeight, setNewWeight] = useState('');
@@ -253,6 +254,8 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.options) {
         setFoodSuggestions(data.options);
+        // Pre-select all items generated so the user can just 1-click bulk add
+        setSelectedFoodIndexes(data.options.map((_: any, i: number) => i));
       } else {
         setSearchError(data.error || 'Failed to parse AI data');
       }
@@ -276,15 +279,48 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [newMeal.name]);
 
-  const handleLogMeal = async (selectedOption: any) => {
+  const toggleFoodSelection = (index: number) => {
+    setSelectedFoodIndexes(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]);
+  };
+
+  const handleLogSelectedMeals = async () => {
+    if (selectedFoodIndexes.length === 0) return;
+    try {
+      const selectedOpts = foodSuggestions.filter((_, i) => selectedFoodIndexes.includes(i));
+      await Promise.all(selectedOpts.map(opt => fetch('/api/food', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...opt, mealType: newMeal.mealType })
+      })));
+      setNewMeal({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
+      setFoodSuggestions([]);
+      setSelectedFoodIndexes([]);
+      setShowLogMeal(false);
+      fetchData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleManualLog = async () => {
+    if (!newMeal.name) return;
     try {
       await fetch('/api/food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(selectedOption)
+        body: JSON.stringify({
+          name: newMeal.name,
+          calories: Number(newMeal.calories) || 0,
+          protein: Number(newMeal.protein) || 0,
+          carbs: Number(newMeal.carbs) || 0,
+          fats: Number(newMeal.fats) || 0,
+          mealType: newMeal.mealType
+        })
       });
-      setNewMeal({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0 });
+      setNewMeal({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
       setFoodSuggestions([]);
+      setSelectedFoodIndexes([]);
+      setSearchError('');
       setShowLogMeal(false);
       fetchData();
     } catch (e) {
@@ -539,8 +575,13 @@ export default function App() {
                   foodLogs.map(log => (
                     <div key={log.id} className="flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
                       <div className="flex-1">
-                        <h3 className="font-bold text-base mb-1">{log.name}</h3>
-                        <div className="flex items-center gap-3 text-sm text-slate-500">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md">
+                            {log.mealType || 'Snack'}
+                          </span>
+                          <h3 className="font-bold text-base leading-tight">{log.name}</h3>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
                           <span className="font-medium text-slate-900">{log.calories} kcal</span>
                           <span>•</span>
                           <span>P: {log.protein}g</span>
@@ -871,6 +912,17 @@ export default function App() {
                 <div className="space-y-4">
                   {foodSuggestions.length === 0 ? (
                     <>
+                      <div className="flex gap-2 mb-2 overflow-x-auto pb-2 custom-scrollbar">
+                        {['Breakfast', 'Lunch', 'Dinner', 'Snack'].map(type => (
+                          <button
+                            key={type}
+                            onClick={() => setNewMeal({ ...newMeal, mealType: type })}
+                            className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${newMeal.mealType === type ? 'bg-primary text-slate-900 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
                       <input
                         type="text" placeholder="Type a food (e.g. cafe, steak, salad)..."
                         value={newMeal.name} onChange={e => setNewMeal({ ...newMeal, name: e.target.value })}
@@ -884,18 +936,57 @@ export default function App() {
                         </div>
                       )}
                       {searchError && (
-                        <div className="p-3 bg-red-50 text-red-500 rounded-xl text-sm font-bold">
-                          Error AI: {searchError}
+                        <div className="bg-orange-50 rounded-xl p-4 mt-4 border border-orange-100">
+                          <p className="font-bold text-orange-600 text-sm mb-3">Oops, the AI couldn't find it. You can enter it manually:</p>
+                          <div className="space-y-3">
+                            <input
+                              type="number"
+                              placeholder="Calories (kcal)"
+                              value={newMeal.calories || ''}
+                              onChange={e => setNewMeal({ ...newMeal, calories: Number(e.target.value) })}
+                              className="w-full p-3 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary"
+                            />
+                            <div className="grid grid-cols-3 gap-2">
+                              <input
+                                type="number"
+                                placeholder="Protein (g)"
+                                value={newMeal.protein || ''}
+                                onChange={e => setNewMeal({ ...newMeal, protein: Number(e.target.value) })}
+                                className="w-full p-2 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary text-sm"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Carbs (g)"
+                                value={newMeal.carbs || ''}
+                                onChange={e => setNewMeal({ ...newMeal, carbs: Number(e.target.value) })}
+                                className="w-full p-2 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary text-sm"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Fats (g)"
+                                value={newMeal.fats || ''}
+                                onChange={e => setNewMeal({ ...newMeal, fats: Number(e.target.value) })}
+                                className="w-full p-2 rounded-lg bg-white border border-orange-100 focus:ring-2 focus:ring-primary text-sm"
+                              />
+                            </div>
+                            <button
+                              onClick={handleManualLog}
+                              className="w-full bg-primary hover:bg-primary/90 text-slate-900 font-bold py-3 rounded-lg shadow-sm mt-2 transition-colors"
+                            >
+                              Save {newMeal.name} Manually
+                            </button>
+                          </div>
                         </div>
                       )}
                     </>
                   ) : (
                     <div className="space-y-3">
                       <div className="flex justify-between items-center mb-2">
-                        <p className="font-bold text-sm text-slate-500">Pick the closest match:</p>
+                        <p className="font-bold text-sm text-slate-500">Select items to log:</p>
                         <button
                           onClick={() => {
                             setFoodSuggestions([]);
+                            setSelectedFoodIndexes([]);
                             setNewMeal({ ...newMeal, name: '' });
                           }}
                           className="text-xs font-bold text-primary hover:underline"
@@ -904,28 +995,41 @@ export default function App() {
                         </button>
                       </div>
                       <div className="max-h-64 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                        {foodSuggestions.map((opt, i) => (
-                          <button
-                            key={i}
-                            onClick={() => handleLogMeal(opt)}
-                            className="w-full flex items-center gap-4 p-3 rounded-xl border border-slate-100 bg-white hover:border-primary/50 hover:bg-primary/5 transition-all text-left"
-                          >
-                            <div className="w-14 h-14 rounded-lg bg-slate-100 shrink-0 overflow-hidden shadow-sm">
-                              <img src={`https://loremflickr.com/100/100/${encodeURIComponent(opt.image_term || 'food')}`} alt={opt.name} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-bold text-slate-900 leading-tight mb-1">{opt.name}</p>
-                              <div className="flex gap-2 text-xs text-slate-500">
-                                <span className="font-bold text-slate-700">{opt.calories} kcal</span>
-                                <span>P:{opt.protein}g</span>
-                                <span>C:{opt.carbs}g</span>
-                                <span>F:{opt.fats}g</span>
+                        {foodSuggestions.map((opt, i) => {
+                          const isSelected = selectedFoodIndexes.includes(i);
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => toggleFoodSelection(i)}
+                              className={`w-full flex items-center gap-4 p-3 rounded-xl border transition-all text-left ${isSelected ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-100 bg-white hover:border-primary/50 hover:bg-primary/5'}`}
+                            >
+                              <div className="w-14 h-14 rounded-lg bg-slate-100 shrink-0 overflow-hidden shadow-sm">
+                                <img src={`https://loremflickr.com/100/100/${encodeURIComponent(opt.image_term || 'food')}`} alt={opt.name} className="w-full h-full object-cover" />
                               </div>
-                            </div>
-                            <ChevronRight size={18} className="text-slate-300" />
-                          </button>
-                        ))}
+                              <div className="flex-1">
+                                <p className="font-bold text-slate-900 leading-tight mb-1">{opt.name}</p>
+                                <div className="flex gap-2 text-xs text-slate-500">
+                                  <span className="font-bold text-slate-700">{opt.calories} kcal</span>
+                                  <span>P:{opt.protein}g</span>
+                                  <span>C:{opt.carbs}g</span>
+                                  <span>F:{opt.fats}g</span>
+                                </div>
+                              </div>
+                              <div className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary text-slate-900' : 'border-slate-300'}`}>
+                                {isSelected && <Check size={14} strokeWidth={3} />}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
+                      {selectedFoodIndexes.length > 0 && (
+                        <button
+                          onClick={handleLogSelectedMeals}
+                          className="w-full mt-4 bg-primary hover:bg-primary/90 text-slate-900 font-bold py-4 rounded-xl shadow-lg shadow-primary/20 transition-colors"
+                        >
+                          Log {selectedFoodIndexes.length} {selectedFoodIndexes.length === 1 ? 'Item' : 'Items'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

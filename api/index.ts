@@ -8,7 +8,7 @@ dotenv.config();
 
 // Initialize Genkit
 const ai = genkit({
-  plugins: [googleAI({ apiKey: process.env.GEMINI_API_KEY })],
+  plugins: [googleAI({ apiKey: process.env.GEMINI_API_KEY || 'MISSING_KEY' })],
 });
 
 // Initialize Firebase Admin SDK
@@ -100,23 +100,22 @@ app.post("/api/food/suggest", requireDb, async (req, res) => {
     // Use Genkit to return an array of specific options
     const FoodOptionSchema = z.object({
       options: z.array(z.object({
-        name: z.string().describe("Specific name of the item (e.g., 'Starbucks Iced Caramel Macchiato', 'Homemade Black Coffee')"),
+        name: z.string().describe("Specific name of the item (e.g., 'Arroz Blanco', 'Pollo a la plancha')"),
         calories: z.number().describe("Estimate of total calories"),
         protein: z.number().describe("Estimate of protein in grams"),
         carbs: z.number().describe("Estimate of carbohydrates in grams"),
         fats: z.number().describe("Estimate of total fats in grams"),
         image_term: z.string().describe("A short, 1-2 word term to search for an icon (e.g., 'coffee', 'steak', 'salad')")
-      })).min(1).max(5)
+      })).min(1).max(10)
     });
 
     const response = await ai.generate({
       model: gemini15Flash,
       config: { version: 'gemini-3-flash-preview' },
-      prompt: `Act as an expert nutritionist. The user searched for: "${name}". 
-      This might be ambiguous. Generate 3 to 4 specific, popular variations of this food. 
-      For example, if they type "cafe", provide options like "Black Coffee", "Latte with Whole Milk", "Starbucks Frappuccino", "Espresso".
-      If they type "bbq", provide options like "Texas BBQ Brisket", "Argentine Asado", "BBQ Chicken Breast".
-      Provide realistic macro estimates for a standard portion of each.`,
+      prompt: `Act as an expert nutritionist. The user provided what they ate: "${name}". 
+      If the user typed a single ambiguous item (e.g. "cafe" or "burger"), generate 3 to 4 specific, popular variations of this food so they can choose one.
+      HOWEVER, if the user typed a list of multiple specific food items (e.g. "arroz blanco, pollo a la plancha y huevos"), treat it as a single meal containing multiple ingredients. In this case, return EXACTLY those items as separate distinct food objects in the array. Do not return variations, just return the items they actually ate.
+      Provide realistic macro estimates (calories, protein, carbs, fats) for a standard portion of each item.`,
       output: { schema: FoodOptionSchema }
     });
 
@@ -180,7 +179,7 @@ app.get("/api/food/recommendations", requireDb, async (req, res) => {
 
 app.post("/api/food", requireDb, async (req, res) => {
   try {
-    const { name, calories, protein, carbs, fats } = req.body;
+    const { name, calories, protein, carbs, fats, mealType } = req.body;
 
     // The user has selected a specific option from the suggestions, so just save it.
     const result = await db!.collection('food_logs').add({
@@ -189,6 +188,7 @@ app.post("/api/food", requireDb, async (req, res) => {
       protein: protein || 0,
       carbs: carbs || 0,
       fats: fats || 0,
+      mealType: mealType || 'Snack',
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
     res.json({ success: true, id: result.id });
