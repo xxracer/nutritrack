@@ -160,10 +160,11 @@ const MacroRing = ({ value, max, label, color }: { value: number, max: number, l
 };
 
 // --- API Helpers ---
-const apiFetch = async (deviceId: string, url: string, options: any = {}) => {
+const apiFetch = async (url: string, options: any = {}, overrideId?: string) => {
+  // Use explicitly provided ID (for Onboarding), or grab from localStorage fallback if user state isn't ready
   const headers = {
     ...options.headers,
-    'x-device-id': deviceId,
+    'x-device-id': overrideId || localStorage.getItem('nutritrack_device_id') || 'fallback_id',
   };
   return fetch(url, { ...options, headers });
 };
@@ -246,11 +247,11 @@ export default function App() {
 
   const handleLogWeight = async () => {
     if (!newWeight || !user) return;
-    await apiFetch(user.uid, '/api/weight', {
+    await apiFetch('/api/weight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ weight: parseFloat(newWeight), photo_url: '' })
-    });
+    }, user.uid);
     setNewWeight('');
     fetchData();
   };
@@ -260,11 +261,11 @@ export default function App() {
     setIsLoggingMeal(true);
     setFoodSuggestions([]);
     try {
-      const res = await apiFetch(user.uid, '/api/food/suggest', {
+      const res = await apiFetch('/api/food/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newMeal.name })
-      });
+      }, user.uid);
       const data = await res.json();
       if (res.ok && data.options) {
         setFoodSuggestions(data.options);
@@ -310,7 +311,7 @@ export default function App() {
       const totalCarbs = selectedOpts.reduce((sum, opt) => sum + (Number(opt.carbs) || 0), 0);
       const totalFats = selectedOpts.reduce((sum, opt) => sum + (Number(opt.fats) || 0), 0);
 
-      await apiFetch(user.uid, '/api/food', {
+      await apiFetch('/api/food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -321,7 +322,7 @@ export default function App() {
           fats: totalFats,
           mealType: newMeal.mealType
         })
-      });
+      }, user.uid);
 
       setNewMeal({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
       setFoodSuggestions([]);
@@ -343,7 +344,7 @@ export default function App() {
       const totalCarbs = validItems.reduce((sum, item) => sum + (Number(item.carbs) || 0), 0);
       const totalFats = validItems.reduce((sum, item) => sum + (Number(item.fats) || 0), 0);
 
-      await apiFetch(user.uid, '/api/food', {
+      await apiFetch('/api/food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -354,7 +355,7 @@ export default function App() {
           fats: totalFats,
           mealType: newMeal.mealType
         })
-      });
+      }, user.uid);
 
       setNewMeal({ name: '', calories: 0, protein: 0, carbs: 0, fats: 0, mealType: 'Snack' });
       setFoodSuggestions([]);
@@ -381,11 +382,11 @@ export default function App() {
 
   const handleLogWorkout = async () => {
     if (currentWorkout.length === 0 || !user) return;
-    await apiFetch(user.uid, '/api/workouts', {
+    await apiFetch('/api/workouts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ exercises: currentWorkout })
-    });
+    }, user.uid);
     setCurrentWorkout([]);
     setShowLogWorkout(false);
     fetchData();
@@ -395,7 +396,7 @@ export default function App() {
     if (!user) return;
     try {
       // 1. Fetch Profile First
-      const profileRes = await apiFetch(user.uid, '/api/profile');
+      const profileRes = await apiFetch('/api/profile');
       if (!profileRes.ok) throw new Error("Failed to fetch profile");
 
       const profileData = await profileRes.json();
@@ -414,9 +415,9 @@ export default function App() {
 
       // 3. Fetch all other historical data safely
       const [foodRes, workoutRes, weightRes] = await Promise.all([
-        apiFetch(user.uid, '/api/food'),
-        apiFetch(user.uid, '/api/workouts'),
-        apiFetch(user.uid, '/api/weight')
+        apiFetch('/api/food'),
+        apiFetch('/api/workouts'),
+        apiFetch('/api/weight')
       ]);
 
       if (foodRes.ok) setFoodLogs(await foodRes.json());
@@ -424,7 +425,7 @@ export default function App() {
       if (workoutRes.ok) setWorkoutLogs(await workoutRes.json());
 
       // 4. Fetch AI Recommendation asynchronously (don't await it blocking the UI)
-      apiFetch(user.uid, '/api/food/recommendations')
+      apiFetch('/api/food/recommendations')
         .then(async res => {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
@@ -685,7 +686,7 @@ export default function App() {
                         onClick={async () => {
                           if (!user) return;
                           try {
-                            const res = await apiFetch(user.uid, `/api/food/${log.id}`, { method: 'DELETE' });
+                            const res = await apiFetch(`/api/food/${log.id}`, { method: 'DELETE' }, user.uid);
                             if (res.ok) {
                               setFoodLogs(foodLogs.filter(item => item.id !== log.id));
                               await fetchData();
