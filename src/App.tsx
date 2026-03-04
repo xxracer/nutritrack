@@ -557,7 +557,7 @@ export default function App() {
   }
 
   if (showOnboarding) {
-    return <Onboarding userUid={user.uid} onComplete={() => { setShowOnboarding(false); fetchData(); }} initialProfile={profile} />;
+    return <Onboarding userUid={user.uid} onComplete={() => { setShowOnboarding(false); fetchData(); }} initialProfile={profile} apiFetch={apiFetch} />;
   }
 
   return (
@@ -1342,7 +1342,7 @@ export default function App() {
 
 // --- Onboarding Flow ---
 
-function Onboarding({ userUid, onComplete, initialProfile }: { userUid: string, onComplete: () => void, initialProfile?: Profile | null }) {
+function Onboarding({ userUid, onComplete, initialProfile, apiFetch }: { userUid: string, onComplete: () => void, initialProfile?: Profile | null, apiFetch: any }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<Partial<Profile>>(initialProfile || {
     name: '',
@@ -1394,14 +1394,13 @@ function Onboarding({ userUid, onComplete, initialProfile }: { userUid: string, 
 
   const handleSave = async () => {
     try {
-      await fetch('/api/profile', {
+      await apiFetch('/api/profile', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-device-id': userUid
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData)
-      });
+      }, userUid);
       onComplete();
     } catch (err) {
       console.error("Failed to save profile", err);
