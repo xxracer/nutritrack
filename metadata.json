@@ -1,0 +1,5 @@
+{
+  "name": "NutriTrack",
+  "description": "A comprehensive fitness and nutrition tracker designed for mobile web. Track calories, macros, workouts, and progress with a native app feel.",
+  "requestFramePermissions": ["notifications", "geolocation"]
+}
